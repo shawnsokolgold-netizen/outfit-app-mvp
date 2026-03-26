@@ -115,9 +115,21 @@ return {
 
 export async function POST(request) {
   try {
+    console.log("match-products route hit");
+
     const body = await request.json();
+    console.log("request body:", body);
+
     const anchorColors = Array.isArray(body.colors) ? body.colors : [];
     const strictMatch = body.strictMatch !== undefined ? body.strictMatch : true;
+    const useStrictMatching = anchorColors.length > 1 && strictMatch;
+
+    console.log("selectedColors:", body.colors);
+    console.log("anchorColors:", anchorColors);
+    console.log("useStrictMatching:", useStrictMatching);
+
+    console.log("NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log("NEXT_PUBLIC_SUPABASE_ANON_KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
     const supabase = createSupabaseServerClient();
 
@@ -130,13 +142,19 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const result = buildOutfit(products || [], anchorColors, { strictMatch });
+    const allProducts = products || [];
+    console.log("tops length:", allProducts.filter((p) => p.category === "top").length);
+    console.log("bottoms length:", allProducts.filter((p) => p.category === "bottom").length);
+    console.log("hats length:", allProducts.filter((p) => p.category === "hat").length);
+    console.log("shoes length:", allProducts.filter((p) => p.category === "shoe").length);
+
+    const result = buildOutfit(allProducts, anchorColors, { strictMatch });
 
     return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json(
-      { error: err.message || "Unknown server error" },
-      { status: 500 }
-    );
+    console.error("match-products error:", err);
+    console.error("error.message:", err.message);
+    console.error("error.stack:", err.stack);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 }
