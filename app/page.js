@@ -519,7 +519,7 @@ export default function HomePage() {
         style={{
           backgroundColor: "#fff",
           borderBottom: "1px solid #e5e7eb",
-          padding: "16px 20px",
+          padding: "20px 24px",
           position: "sticky",
           top: 0,
           zIndex: 1000,
@@ -547,23 +547,23 @@ export default function HomePage() {
       <section
         style={{
           background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          padding: "80px 20px",
+          padding: "48px 20px 64px",
           textAlign: "center",
           color: "#fff",
         }}
       >
         <div style={{ maxWidth: "800px", margin: "0 auto" }}>
           <h2 style={{ 
-            fontSize: "48px", 
-            fontWeight: "800", 
-            margin: "0 0 16px 0",
+            fontSize: "44px",
+            fontWeight: "800",
+            margin: "0 0 14px 0",
             lineHeight: "1.2"
           }}>
             Upload a shoe or clothing photo and get matching outfit ideas
           </h2>
           <p style={{ 
-            fontSize: "20px", 
-            margin: "0 0 32px 0",
+            fontSize: "18px", 
+            margin: "0 0 18px 0",
             opacity: 0.95,
             lineHeight: "1.6"
           }}>
@@ -572,15 +572,15 @@ export default function HomePage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             style={{
-              padding: "16px 32px",
-              borderRadius: "12px",
+              padding: "10px 24px",
+              borderRadius: "10px",
               border: "none",
               backgroundColor: "#fff",
               color: "#667eea",
               fontWeight: "700",
-              fontSize: "16px",
+              fontSize: "15px",
               cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              boxShadow: "0 3px 10px rgba(0,0,0,0.15)",
               transition: "transform 0.2s, box-shadow 0.2s",
             }}
             onMouseEnter={(e) => {
@@ -597,109 +597,237 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* How It Works Section */}
-      <section
-        style={{
-          backgroundColor: "#fff",
-          padding: "64px 20px",
-        }}
-      >
-        <div style={{ maxWidth: "1000px", margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ 
-            fontSize: "36px", 
-            fontWeight: "700", 
-            margin: "0 0 48px 0",
-            color: "#111827"
-          }}>
-            How it works
-          </h2>
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", 
-            gap: "32px",
-            textAlign: "center"
-          }}>
-            <div>
-              <div style={{ 
-                fontSize: "48px", 
-                fontWeight: "700", 
-                color: "#667eea",
-                marginBottom: "16px"
-              }}>
-                1
-              </div>
-              <h3 style={{ 
-                fontSize: "20px", 
-                fontWeight: "600", 
-                margin: "0 0 8px 0",
-                color: "#111827"
-              }}>
-                Upload an image
+      {imageUrl ? (
+        <div
+          style={{
+            backgroundColor: "#fff",
+            borderRadius: "20px",
+            padding: "24px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+            marginBottom: "24px",
+            maxWidth: "1200px",
+            margin: "-32px auto 0",
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            style={{ display: "none" }}
+          />
+
+          <div style={{ display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap" }}>
+            {/* Left: image + action buttons */}
+            <div style={{ flex: "0 0 200px", width: "200px" }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: "15px", fontWeight: "600", color: "#111827" }}>
+                Your Photo
               </h3>
-              <p style={{ 
-                fontSize: "15px", 
-                color: "#6b7280",
-                margin: 0,
-                lineHeight: "1.6"
-              }}>
-                Start with any clothing item or inspiration photo
+              <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280" }}>
+                Click image to pick colors
               </p>
-            </div>
-            <div>
-              <div style={{ 
-                fontSize: "48px", 
-                fontWeight: "700", 
-                color: "#667eea",
-                marginBottom: "16px"
-              }}>
-                2
+              <img
+                ref={imgRef}
+                src={imageUrl}
+                alt="Uploaded"
+                onClick={handleImageClick}
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  borderRadius: "10px",
+                  objectFit: "contain",
+                  display: "block",
+                  cursor: "crosshair",
+                  marginBottom: "10px",
+                }}
+              />
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <button
+                  onClick={handleDetectColors}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    border: "none",
+                    backgroundColor: "#4f46e5",
+                    color: "#fff",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    transition: "background-color 0.2s",
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = "#4338ca"}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = "#4f46e5"}
+                >
+                  Detect Colors
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    border: "1px solid #d1d5db",
+                    backgroundColor: "#fff",
+                    color: "#6b7280",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                  }}
+                >
+                  Upload Different Photo
+                </button>
               </div>
-              <h3 style={{ 
-                fontSize: "20px", 
-                fontWeight: "600", 
-                margin: "0 0 8px 0",
-                color: "#111827"
-              }}>
-                Pick your colors
-              </h3>
-              <p style={{ 
-                fontSize: "15px", 
-                color: "#6b7280",
-                margin: 0,
-                lineHeight: "1.6"
-              }}>
-                Our AI detects colors automatically or click to select
-              </p>
             </div>
-            <div>
-              <div style={{ 
-                fontSize: "48px", 
-                fontWeight: "700", 
-                color: "#667eea",
-                marginBottom: "16px"
-              }}>
-                3
+
+            {/* Right: detected colors + selected colors + actions */}
+            {(detectedColors.length > 0 || selectedCombo.length > 0) && (
+              <div style={{ flex: "1 1 0", minWidth: "0" }}>
+                {detectedColors.length > 0 && (
+                  <>
+                    <h2 style={{ margin: "0 0 4px 0", fontSize: "18px" }}>Detected Colors</h2>
+                    <p style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: "14px" }}>
+                      Click colors to add or remove them from your selection.
+                    </p>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px" }}>
+                      {detectedColors.map((color) => {
+                        const active = selectedCombo.some((c) => c.hex === color.hex);
+                        return (
+                          <button
+                            key={color.hex}
+                            onClick={() => toggleComboColor(color)}
+                            style={{
+                              border: active ? "3px solid #111827" : "1px solid #d1d5db",
+                              borderRadius: "12px",
+                              padding: "10px",
+                              backgroundColor: "#fff",
+                              cursor: "pointer",
+                              minWidth: "100px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "32px",
+                                height: "32px",
+                                borderRadius: "8px",
+                                backgroundColor: color.hex,
+                                margin: "0 auto 8px",
+                              }}
+                            />
+                            <div style={{ fontWeight: "700", fontSize: "13px" }}>{color.name}</div>
+                            <div style={{ color: "#6b7280", fontSize: "12px" }}>{color.hex}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {selectedCombo.length > 0 && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                      <h2 style={{ margin: 0, fontSize: "18px" }}>Selected Colors</h2>
+                      {selectedCombo.length > 1 && (
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={strictMatch}
+                            onChange={(e) => setStrictMatch(e.target.checked)}
+                            style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                          />
+                          <span style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>
+                            Match all colors
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "14px" }}>
+                      {selectedCombo.map((color) => (
+                        <div
+                          key={color.hex}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "6px 10px",
+                            border: "1px solid #d1d5db",
+                            borderRadius: "10px",
+                            backgroundColor: "#f9fafb",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "24px",
+                              height: "24px",
+                              borderRadius: "6px",
+                              backgroundColor: color.hex,
+                              border: "1px solid #d1d5db",
+                            }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: "700", fontSize: "13px" }}>{color.name}</div>
+                            <div style={{ color: "#6b7280", fontSize: "11px" }}>{color.hex}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {loadingOutfit && (
+                      <div style={{ padding: "8px 0", color: "#4f46e5", fontWeight: "600", fontSize: "14px", marginBottom: "10px" }}>
+                        Building your outfit...
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => buildComboOutfit(true)}
+                        disabled={loadingOutfit}
+                        style={{
+                          padding: "12px 20px",
+                          borderRadius: "10px",
+                          border: "none",
+                          backgroundColor: loadingOutfit ? "#9ca3af" : "#4f46e5",
+                          color: "#fff",
+                          fontWeight: "700",
+                          cursor: loadingOutfit ? "not-allowed" : "pointer",
+                          opacity: loadingOutfit ? 0.6 : 1,
+                          fontSize: "14px",
+                          transition: "background-color 0.2s",
+                        }}
+                        onMouseEnter={(e) => { if (!loadingOutfit) e.target.style.backgroundColor = "#4338ca"; }}
+                        onMouseLeave={(e) => { if (!loadingOutfit) e.target.style.backgroundColor = "#4f46e5"; }}
+                      >
+                        Build Outfit
+                      </button>
+                      <button
+                        onClick={() => { setSelectedCombo([]); setSelectedColor(null); setOutfits([]); }}
+                        disabled={loadingOutfit}
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: "10px",
+                          border: "1px solid #d1d5db",
+                          backgroundColor: "#fff",
+                          color: "#6b7280",
+                          fontWeight: "600",
+                          cursor: loadingOutfit ? "not-allowed" : "pointer",
+                          opacity: loadingOutfit ? 0.6 : 1,
+                          fontSize: "14px",
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-              <h3 style={{ 
-                fontSize: "20px", 
-                fontWeight: "600", 
-                margin: "0 0 8px 0",
-                color: "#111827"
-              }}>
-                Get outfit recommendations
-              </h3>
-              <p style={{ 
-                fontSize: "15px", 
-                color: "#6b7280",
-                margin: 0,
-                lineHeight: "1.6"
-              }}>
-                Receive curated product matches from top brands
-              </p>
-            </div>
+            )}
           </div>
         </div>
-      </section>
+      ) : (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          style={{ display: "none" }}
+        />
+      )}
 
       {/* App Section */}
       <main
@@ -712,260 +840,6 @@ export default function HomePage() {
         }}
       >
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <div
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: "20px",
-            padding: "24px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-            marginBottom: "24px",
-          }}
-        >
-          <input 
-            ref={fileInputRef} 
-            type="file" 
-            accept="image/*" 
-            onChange={handleImageUpload}
-            style={{ display: "none" }}
-          />
-
-          {imageUrl ? (
-            <div style={{ marginTop: "20px" }}>
-              <img
-                ref={imgRef}
-                src={imageUrl}
-                alt="Uploaded item"
-                onClick={handleImageClick}
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "420px",
-                  borderRadius: "16px",
-                  cursor: "crosshair",
-                  display: "block",
-                  marginBottom: "16px",
-                }}
-              />
-
-              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                <button
-                  onClick={handleDetectColors}
-                  style={{
-                    padding: "12px 16px",
-                    borderRadius: "12px",
-                    border: "none",
-                    backgroundColor: "#111827",
-                    color: "#fff",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Detect Colors
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {detectedColors.length > 0 ? (
-          <section
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: "20px",
-              padding: "20px",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-              marginBottom: "24px",
-            }}
-          >
-            <h2 style={{ marginTop: 0 }}>Detected Colors</h2>
-            <p style={{ color: "#6b7280" }}>
-              Click colors to add or remove them from your selection.
-            </p>
-
-            <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", marginBottom: "16px" }}>
-              {detectedColors.map((color) => {
-                const active = selectedCombo.some((c) => c.hex === color.hex);
-
-                return (
-                  <button
-                    key={color.hex}
-                    onClick={() => toggleComboColor(color)}
-                    style={{
-                      border: active ? "3px solid #111827" : "1px solid #d1d5db",
-                      borderRadius: "16px",
-                      padding: "12px",
-                      backgroundColor: "#fff",
-                      cursor: "pointer",
-                      minWidth: "120px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "10px",
-                        backgroundColor: color.hex,
-                        margin: "0 auto 10px",
-                      }}
-                    />
-                    <div style={{ fontWeight: "700" }}>{color.name}</div>
-                    <div style={{ color: "#6b7280", fontSize: "13px" }}>{color.hex}</div>
-                  </button>
-                );
-              })}
-            </div>
-
-          </section>
-        ) : null}
-
-        {selectedCombo.length > 0 ? (
-          <section
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: "20px",
-              padding: "20px",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-              marginBottom: "24px",
-              minHeight: "240px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <h2 style={{ margin: 0 }}>Selected Colors</h2>
-              {selectedCombo.length > 1 ? (
-                <div style={{ textAlign: "right" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={strictMatch}
-                      onChange={(e) => setStrictMatch(e.target.checked)}
-                      style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                    />
-                    <span style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>
-                      Match all selected colors
-                    </span>
-                  </label>
-                  <p style={{ 
-                    margin: "4px 0 0 24px", 
-                    fontSize: "12px", 
-                    color: "#6b7280",
-                    textAlign: "left"
-                  }}>
-                    {strictMatch 
-                      ? "Only shows items that include every selected color"
-                      : "Shows items that match any selected color"}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", marginBottom: "16px" }}>
-              {selectedCombo.map((color) => (
-                <div
-                  key={color.hex}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    padding: "8px 12px",
-                    border: "1px solid #d1d5db",
-                    borderRadius: "12px",
-                    backgroundColor: "#f9fafb",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "8px",
-                      backgroundColor: color.hex,
-                      border: "1px solid #d1d5db",
-                    }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: "700", fontSize: "14px" }}>{color.name}</div>
-                    <div style={{ color: "#6b7280", fontSize: "12px" }}>{color.hex}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {loadingOutfit ? (
-              <div style={{ 
-                padding: "12px 16px", 
-                color: "#4f46e5", 
-                fontWeight: "600",
-                fontSize: "15px"
-              }}>
-                Building your outfit...
-              </div>
-            ) : null}
-            
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => buildComboOutfit(true)}
-                disabled={loadingOutfit}
-                style={{
-                  padding: "14px 24px",
-                  borderRadius: "12px",
-                  border: "none",
-                  backgroundColor: loadingOutfit ? "#9ca3af" : "#4f46e5",
-                  color: "#fff",
-                  fontWeight: "700",
-                  cursor: loadingOutfit ? "not-allowed" : "pointer",
-                  opacity: loadingOutfit ? 0.6 : 1,
-                  fontSize: "15px",
-                  transition: "background-color 0.2s, transform 0.1s",
-                }}
-                onMouseEnter={(e) => {
-                  if (!loadingOutfit) {
-                    e.target.style.backgroundColor = "#4338ca";
-                    e.target.style.transform = "translateY(-1px)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!loadingOutfit) {
-                    e.target.style.backgroundColor = "#4f46e5";
-                    e.target.style.transform = "translateY(0)";
-                  }
-                }}
-              >
-                Build Outfit from Selected Colors
-              </button>
-              
-              <button
-                onClick={() => {
-                  setSelectedCombo([]);
-                  setSelectedColor(null);
-                  setOutfits([]);
-                }}
-                disabled={loadingOutfit}
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: "12px",
-                  border: "1px solid #d1d5db",
-                  backgroundColor: "#fff",
-                  color: "#6b7280",
-                  fontWeight: "600",
-                  cursor: loadingOutfit ? "not-allowed" : "pointer",
-                  opacity: loadingOutfit ? 0.6 : 1,
-                }}
-              >
-                Clear Selection
-              </button>
-            </div>
-          </section>
-        ) : null}
-
-        {loadingOutfit ? (
-          <section
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: "20px",
-              padding: "20px",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-            }}
-          >
-            Matching products...
-          </section>
-        ) : null}
-
         {outfits.length > 0 ? (
           <section
             ref={resultsRef}
@@ -1096,6 +970,112 @@ export default function HomePage() {
         ) : null}
         </div>
       </main>
+
+      {/* How It Works Section */}
+      {imageUrl ? (
+      <section
+        style={{
+          backgroundColor: "#fff",
+          padding: "64px 20px",
+        }}
+      >
+        <div style={{ maxWidth: "1000px", margin: "0 auto", textAlign: "center" }}>
+          <h2 style={{
+            fontSize: "36px",
+            fontWeight: "700",
+            margin: "0 0 48px 0",
+            color: "#111827"
+          }}>
+            How it works
+          </h2>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+            gap: "32px",
+            textAlign: "center"
+          }}>
+            <div>
+              <div style={{
+                fontSize: "48px",
+                fontWeight: "700",
+                color: "#667eea",
+                marginBottom: "16px"
+              }}>
+                1
+              </div>
+              <h3 style={{
+                fontSize: "20px",
+                fontWeight: "600",
+                margin: "0 0 8px 0",
+                color: "#111827"
+              }}>
+                Upload an image
+              </h3>
+              <p style={{
+                fontSize: "15px",
+                color: "#6b7280",
+                margin: 0,
+                lineHeight: "1.6"
+              }}>
+                Start with any clothing item or inspiration photo
+              </p>
+            </div>
+            <div>
+              <div style={{
+                fontSize: "48px",
+                fontWeight: "700",
+                color: "#667eea",
+                marginBottom: "16px"
+              }}>
+                2
+              </div>
+              <h3 style={{
+                fontSize: "20px",
+                fontWeight: "600",
+                margin: "0 0 8px 0",
+                color: "#111827"
+              }}>
+                Pick your colors
+              </h3>
+              <p style={{
+                fontSize: "15px",
+                color: "#6b7280",
+                margin: 0,
+                lineHeight: "1.6"
+              }}>
+                Our AI detects colors automatically or click to select
+              </p>
+            </div>
+            <div>
+              <div style={{
+                fontSize: "48px",
+                fontWeight: "700",
+                color: "#667eea",
+                marginBottom: "16px"
+              }}>
+                3
+              </div>
+              <h3 style={{
+                fontSize: "20px",
+                fontWeight: "600",
+                margin: "0 0 8px 0",
+                color: "#111827"
+              }}>
+                Get outfit recommendations
+              </h3>
+              <p style={{
+                fontSize: "15px",
+                color: "#6b7280",
+                margin: 0,
+                lineHeight: "1.6"
+              }}>
+                Receive curated product matches from top brands
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+      ) : null}
 
       <footer
         style={{

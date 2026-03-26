@@ -59,6 +59,12 @@ function pickBest(candidates, anchorColors) {
   return ranked[0];
 }
 
+function filterByMode(items, colors, strict) {
+  return strict
+    ? items.filter((p) => matchesAll(p, colors))
+    : items.filter((p) => matchesAny(p, colors));
+}
+
 function buildOutfit(products, anchorColors = [], { includeHat = true, includeShoe = true, strictMatch = true } = {}) {
   const accentMatches = anchorColors.filter((c) => ACCENTS.includes(c));
   const neutralMatches = anchorColors.filter((c) => NEUTRALS.includes(c));
@@ -70,47 +76,31 @@ function buildOutfit(products, anchorColors = [], { includeHat = true, includeSh
   const shoes = products.filter((p) => p.category === "shoe");
 
   const safeColors = allMatches.length > 0 ? allMatches : ["black", "white", "gray", "denim"];
-  
-  // Determine if we need strict matching (multiple colors selected AND strictMatch enabled)
-  const useStrictMatching = anchorColors.length > 1 && strictMatch;
 
-  // Tops: strict match if multiple colors, otherwise any match
-  const topCandidates = useStrictMatching && accentMatches.length > 1
-    ? tops.filter((p) => matchesAll(p, accentMatches))
-    : tops.filter((p) => matchesAny(p, accentMatches)).length > 0
-      ? tops.filter((p) => matchesAny(p, accentMatches))
-      : tops.filter((p) => matchesAny(p, safeColors));
+  // Strict mode: every selected color must appear in the product; no fallback to any-match.
+  const useStrictMatching = strictMatch;
+
+  // Tops: must match all selected colors in strict mode, any in loose mode.
+  const topCandidates = filterByMode(tops, anchorColors, useStrictMatching);
 
   const bottomNeutralCandidates = bottoms.filter((p) =>
     Array.isArray(p.tags) ? p.tags.includes("neutral") : false
   );
 
-  // Bottoms: strict match if multiple colors, otherwise any match
-  const bottomCandidates = useStrictMatching && allMatches.length > 1
-    ? bottomNeutralCandidates.filter((p) => matchesAll(p, allMatches)).length > 0
-      ? bottomNeutralCandidates.filter((p) => matchesAll(p, allMatches))
-      : bottomNeutralCandidates.filter((p) => matchesAny(p, safeColors))
+  // Bottoms are complementary neutrals.
+  const bottomCandidates = useStrictMatching
+    ? filterByMode(bottoms, anchorColors, true)
     : bottomNeutralCandidates.filter((p) => matchesAny(p, safeColors)).length > 0
-      ? bottomNeutralCandidates.filter((p) => matchesAny(p, safeColors))
-      : bottomNeutralCandidates.length > 0
-      ? bottomNeutralCandidates
-      : bottoms;
+    ? bottomNeutralCandidates.filter((p) => matchesAny(p, safeColors))
+    : bottomNeutralCandidates.length > 0
+    ? bottomNeutralCandidates
+    : bottoms;
 
-  // Hats: strict match if multiple colors selected
-  const hatCandidates = useStrictMatching && accentMatches.length > 1
-    ? hats.filter((p) => matchesAll(p, accentMatches))
-    : accentMatches.length > 0
-      ? hats.filter((p) => matchesAny(p, accentMatches))
-      : hats.filter((p) => Array.isArray(p.tags) ? p.tags.includes("neutral") : false);
+  // Hats: must match all selected colors in strict mode, any in loose mode.
+  const hatCandidates = filterByMode(hats, anchorColors, useStrictMatching);
 
-  // Shoes: strict match if multiple colors, otherwise any match
-  const shoeCandidates = useStrictMatching && safeColors.length > 1
-    ? shoes.filter((p) => matchesAll(p, safeColors)).length > 0
-      ? shoes.filter((p) => matchesAll(p, safeColors))
-      : shoes.filter((p) => matchesAny(p, safeColors))
-    : shoes.filter((p) => matchesAny(p, safeColors)).length > 0
-      ? shoes.filter((p) => matchesAny(p, safeColors))
-      : shoes.filter((p) => (Array.isArray(p.tags) ? p.tags.includes("neutral") : false));
+  // Shoes: must match all selected colors in strict mode, any in loose mode.
+  const shoeCandidates = filterByMode(shoes, anchorColors, useStrictMatching);
 
   const rankedHats = includeHat ? rankCandidates(hatCandidates, safeColors) : [];
 
