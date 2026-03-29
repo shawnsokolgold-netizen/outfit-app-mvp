@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useEffect } from "react";
+import { OutfitItemCard } from "@/components/OutfitItemCard";
+import { MannequinPreview } from "@/components/MannequinPreview";
 
 export default function HomePage() {
   const [imageUrl, setImageUrl] = useState(null);
@@ -10,6 +13,10 @@ export default function HomePage() {
   const [outfits, setOutfits] = useState([]);
   const [loadingOutfit, setLoadingOutfit] = useState(false);
   const [strictMatch, setStrictMatch] = useState(true);
+  const [selectedOutfitItems, setSelectedOutfitItems] = useState({});
+  const [showMannequinPreview, setShowMannequinPreview] = useState(false);
+  const [anchorCategory, setAnchorCategory] = useState(null);
+  const [anchorImage, setAnchorImage] = useState(null);
   const imgRef = useRef(null);
   const buildTimeoutRef = useRef(null);
   const resultsRef = useRef(null);
@@ -26,6 +33,39 @@ export default function HomePage() {
     setSelectedColor(null);
     setSelectedCombo([]);
     setOutfits([]);
+
+    // Classify and store the uploaded image as anchor
+    const category = classifyUpload(file);
+    setAnchorCategory(category);
+    setAnchorImage(url);
+
+    // Inject uploaded item into selectedOutfitItems
+    const categoryKey = category.toLowerCase();
+    setSelectedOutfitItems({
+      [categoryKey]: { image: url, title: "Your Item", category: category }
+    });
+  }
+
+  function classifyUpload(file) {
+    const name = file.name.toLowerCase();
+
+    if (
+      name.includes("shoe") ||
+      name.includes("sneaker") ||
+      name.includes("kobe") ||
+      name.includes("nike") ||
+      name.includes("adidas") ||
+      name.includes("boot")
+    ) {
+      return "Shoes";
+    }
+    if (name.includes("hat") || name.includes("cap") || name.includes("beanie")) {
+      return "Hat";
+    }
+    if (name.includes("pant") || name.includes("jean") || name.includes("short")) {
+      return "Bottom";
+    }
+    return "Top";
   }
 
   function rgbToHex(r, g, b) {
@@ -90,9 +130,9 @@ export default function HomePage() {
     if (h >= 75 && h < 95) return "Lime";
     if (h >= 95 && h < 160) return "Green";
     if (h >= 160 && h < 190) return "Teal";
-    if (h >= 190 && h < 250) return "Blue";
-    if (h >= 250 && h < 290) return "Purple";
-    if (h >= 290 && h < 330) return "Magenta";
+    if (h >= 190 && h < 249) return "Blue";
+    if (h >= 249 && h < 289) return "Purple";
+    if (h >= 289 && h < 330) return "Magenta";
     return "Pink";
   }
 
@@ -276,12 +316,13 @@ export default function HomePage() {
     canvas.height = height;
     ctx.drawImage(img, 0, 0);
 
-    const startX = Math.floor(width * 0.2);
-    const startY = Math.floor(height * 0.2);
-    const sampleWidth = Math.floor(width * 0.6);
-    const sampleHeight = Math.floor(height * 0.6);
+    // Sample only the center 60% of the image
+    const sampleX = width * 0.2;
+    const sampleY = height * 0.2;
+    const sampleWidth = width * 0.6;
+    const sampleHeight = height * 0.6;
 
-    const { data } = ctx.getImageData(startX, startY, sampleWidth, sampleHeight);
+    const { data } = ctx.getImageData(sampleX, sampleY, sampleWidth, sampleHeight);
     const familyMap = {};
 
     for (let i = 0; i < data.length; i += 4) {
@@ -290,8 +331,14 @@ export default function HomePage() {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
+
       const hsl = rgbToHsl(r, g, b);
-      const name = getColorName(hsl.h, hsl.s, hsl.l);
+      let name = getColorName(hsl.h, hsl.s, hsl.l);
+
+      // Merge Yellow and Lime into Yellow for ranking purposes
+      if (name === "Lime") {
+        name = "Yellow";
+      }
 
       if (!familyMap[name]) {
         familyMap[name] = { count: 0, rTotal: 0, gTotal: 0, bTotal: 0 };
@@ -303,9 +350,10 @@ export default function HomePage() {
       familyMap[name].bTotal += b;
     }
 
+    // Sort by frequency and take top 6, then filter out White unless it's a strong color
     const sorted = Object.entries(familyMap)
       .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 5)
+      .slice(0, 6)
       .map(([name, v]) => {
         const r = Math.round(v.rTotal / v.count);
         const g = Math.round(v.gTotal / v.count);
@@ -315,10 +363,23 @@ export default function HomePage() {
           name,
           rgb: `RGB(${r}, ${g}, ${b})`,
           hex: rgbToHex(r, g, b),
+          count: v.count,
         };
       });
 
-    setDetectedColors(sorted);
+    // Remove White unless it's the strongest color (top by count)
+    const maxCount = sorted.length > 0 ? sorted[0].count : 0;
+    const filtered = sorted.filter(color => {
+      if (color.name === "White" && color.count < maxCount * 0.8) {
+        return false;
+      }
+      return true;
+    });
+
+    // Remove count from display (keep only name, rgb, hex)
+    const result = filtered.map(({ count, ...rest }) => rest);
+
+    setDetectedColors(result);
     setSelectedColor(null);
     setSelectedCombo([]);
     setOutfits([]);
@@ -370,15 +431,12 @@ export default function HomePage() {
     const r = Math.round(rT / count);
     const g = Math.round(gT / count);
     const b = Math.round(bT / count);
+
+    const hex = rgbToHex(r, g, b);
     const hsl = rgbToHsl(r, g, b);
     const name = getColorName(hsl.h, hsl.s, hsl.l);
 
-    const clickedColor = {
-      name,
-      rgb: `RGB(${r}, ${g}, ${b})`,
-      hex: rgbToHex(r, g, b),
-    };
-
+    const clickedColor = { name, rgb: `RGB(${r}, ${g}, ${b})`, hex };
     setSelectedColor(clickedColor);
 
     // Add clicked color to selectedCombo if not already present
@@ -440,12 +498,13 @@ export default function HomePage() {
               borderRadius: "999px",
               backgroundColor: "#f3f4f6",
               marginBottom: "10px",
+              color: "#374151",
             }}
           >
             {item.category}
           </div>
 
-          <h3 style={{ margin: "0 0 8px 0", fontSize: "18px" }}>{item.title}</h3>
+          <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", color: "#1f2937" }}>{item.title}</h3>
 
           {item.matchExplanation ? (
             <p style={{ 
@@ -465,7 +524,7 @@ export default function HomePage() {
           ) : null}
 
           {item.price ? (
-            <p style={{ margin: "0 0 14px 0", fontWeight: "700", fontSize: "18px" }}>
+            <p style={{ margin: "0 0 14px 0", fontWeight: "700", fontSize: "18px", color: "#111827" }}>
               {item.price}
             </p>
           ) : null}
@@ -490,7 +549,7 @@ export default function HomePage() {
               onMouseEnter={(e) => e.target.style.backgroundColor = "#FFB84D"}
               onMouseLeave={(e) => e.target.style.backgroundColor = "#FF9900"}
             >
-              Check price on Amazon
+              View Product
             </a>
           ) : (
             <span
@@ -513,33 +572,154 @@ export default function HomePage() {
     );
   }
 
+  const howItWorksSection = (
+    <section
+      style={{
+        backgroundColor: "#fff",
+        padding: "36px 20px",
+      }}
+    >
+      <div style={{ maxWidth: "1000px", margin: "0 auto", textAlign: "center" }}>
+        <h2 style={{
+          fontSize: "32px",
+          fontWeight: "700",
+          margin: "0 0 28px 0",
+          color: "#111827"
+        }}>
+          How it works
+        </h2>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: "24px",
+          textAlign: "center"
+        }}>
+          <div>
+            <div style={{
+              fontSize: "48px",
+              fontWeight: "700",
+              color: "#4338ca",
+              marginBottom: "16px"
+            }}>
+              1
+            </div>
+            <h3 style={{
+              fontSize: "20px",
+              fontWeight: "600",
+              margin: "0 0 8px 0",
+              color: "#111827"
+            }}>
+              Upload Your Photo
+            </h3>
+            <p style={{
+              fontSize: "15px",
+              color: "#1f2937",
+              fontWeight: "500",
+              margin: 0,
+              lineHeight: "1.6"
+            }}>
+              Upload any outfit or item to get started.
+            </p>
+          </div>
+          <div>
+            <div style={{
+              fontSize: "48px",
+              fontWeight: "700",
+              color: "#4338ca",
+              marginBottom: "16px"
+            }}>
+              2
+            </div>
+            <h3 style={{
+              fontSize: "20px",
+              fontWeight: "600",
+              margin: "0 0 8px 0",
+              color: "#111827"
+            }}>
+              Detect Your Colors
+            </h3>
+            <p style={{
+              fontSize: "15px",
+              color: "#1f2937",
+              fontWeight: "500",
+              margin: 0,
+              lineHeight: "1.6"
+            }}>
+              We analyze your image to identify key colors and tones.
+            </p>
+          </div>
+          <div>
+            <div style={{
+              fontSize: "48px",
+              fontWeight: "700",
+              color: "#4338ca",
+              marginBottom: "16px"
+            }}>
+              3
+            </div>
+            <h3 style={{
+              fontSize: "20px",
+              fontWeight: "600",
+              margin: "0 0 8px 0",
+              color: "#111827"
+            }}>
+              Discover Matching Products
+            </h3>
+            <p style={{
+              fontSize: "15px",
+              color: "#1f2937",
+              fontWeight: "500",
+              margin: 0,
+              lineHeight: "1.6"
+            }}>
+              Get curated product recommendations that match your look from real brands.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <>
       <header
         style={{
           backgroundColor: "#fff",
           borderBottom: "1px solid #e5e7eb",
-          padding: "20px 24px",
+          padding: "14px 20px",
           position: "sticky",
           top: 0,
           zIndex: 1000,
         }}
       >
-        <div
-          style={{
-            maxWidth: "1200px",
-            margin: "0 auto",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "700", color: "#111827" }}>
-            Outfit Builder
-          </h1>
-          <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
-            Powered by AI recommendations
-          </p>
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+          <Link
+            href="/"
+            className="text-[22px] font-extrabold tracking-tight text-gray-900 whitespace-nowrap hover:opacity-85 transition-opacity"
+          >
+            BuildMyOutfit
+          </Link>
+
+          <div className="flex items-center gap-4 sm:gap-6 ml-auto">
+            <Link
+              href="/about"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              Contact
+            </Link>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center rounded-full bg-black text-white text-sm font-semibold px-4 py-2 hover:bg-gray-800 transition-colors"
+            >
+              Try It Free
+            </button>
+          </div>
         </div>
       </header>
 
@@ -547,27 +727,36 @@ export default function HomePage() {
       <section
         style={{
           background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          padding: "48px 20px 64px",
+          padding: "44px 20px 58px",
           textAlign: "center",
           color: "#fff",
         }}
       >
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <h2 style={{ 
-            fontSize: "44px",
+            fontSize: "40px",
             fontWeight: "800",
-            margin: "0 0 14px 0",
-            lineHeight: "1.2"
+            margin: "0 0 10px 0",
+            lineHeight: "1.15"
           }}>
-            Upload a shoe or clothing photo and get matching outfit ideas
+            Build Better Outfits Instantly with AI
           </h2>
           <p style={{ 
             fontSize: "18px", 
-            margin: "0 0 18px 0",
+            maxWidth: "640px",
+            margin: "0 auto 14px",
             opacity: 0.95,
-            lineHeight: "1.6"
+            lineHeight: "1.55"
           }}>
-            Our AI detects colors and recommends products that work together.
+            Upload a photo, detect your colors, and discover matching clothing from real brands you can shop today.
+          </p>
+          <p style={{
+            fontSize: "14px",
+            margin: "0 0 14px 0",
+            opacity: 0.88,
+            lineHeight: "1.5"
+          }}>
+            Curated product recommendations • Real brands • Free to use
           </p>
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -596,6 +785,8 @@ export default function HomePage() {
           </button>
         </div>
       </section>
+
+      {!imageUrl && howItWorksSection}
 
       {imageUrl ? (
         <div
@@ -683,7 +874,7 @@ export default function HomePage() {
               <div style={{ flex: "1 1 0", minWidth: "0" }}>
                 {detectedColors.length > 0 && (
                   <>
-                    <h2 style={{ margin: "0 0 4px 0", fontSize: "18px" }}>Detected Colors</h2>
+                    <h2 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "#1f2937", fontWeight: "600" }}>Detected Colors</h2>
                     <p style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: "14px" }}>
                       Click colors to add or remove them from your selection.
                     </p>
@@ -712,8 +903,8 @@ export default function HomePage() {
                                 margin: "0 auto 8px",
                               }}
                             />
-                            <div style={{ fontWeight: "700", fontSize: "13px" }}>{color.name}</div>
-                            <div style={{ color: "#6b7280", fontSize: "12px" }}>{color.hex}</div>
+                            <div style={{ fontWeight: "700", fontSize: "13px", color: "#1f2937" }}>{color.name}</div>
+                            <div style={{ color: "#4b5563", fontSize: "12px" }}>{color.hex}</div>
                           </button>
                         );
                       })}
@@ -724,7 +915,7 @@ export default function HomePage() {
                 {selectedCombo.length > 0 && (
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                      <h2 style={{ margin: 0, fontSize: "18px" }}>Selected Colors</h2>
+                      <h2 style={{ margin: 0, fontSize: "18px", color: "#1f2937", fontWeight: "600" }}>Selected Colors</h2>
                       {selectedCombo.length > 1 && (
                         <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                           <input
@@ -763,8 +954,8 @@ export default function HomePage() {
                             }}
                           />
                           <div>
-                            <div style={{ fontWeight: "700", fontSize: "13px" }}>{color.name}</div>
-                            <div style={{ color: "#6b7280", fontSize: "11px" }}>{color.hex}</div>
+                            <div style={{ fontWeight: "700", fontSize: "13px", color: "#1f2937" }}>{color.name}</div>
+                            <div style={{ color: "#4b5563", fontSize: "11px" }}>{color.hex}</div>
                           </div>
                         </div>
                       ))}
@@ -850,15 +1041,15 @@ export default function HomePage() {
               boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
             }}
           >
-            <h2 style={{ marginTop: 0 }}>Outfit Suggestions</h2>
+            <h2 style={{ marginTop: 0, color: "#1f2937" }}>Outfit Suggestions</h2>
 
             {outfits.map((outfit, index) => (
               <div key={index} style={{ marginBottom: "28px" }}>
                 <div style={{ marginBottom: "18px" }}>
-                  <div style={{ fontWeight: "700", fontSize: "18px" }}>
+                  <div style={{ fontWeight: "700", fontSize: "18px", color: "#1f2937" }}>
                     Based on: {outfit.basedOn}
                   </div>
-                  <div style={{ color: "#6b7280" }}>Source: {outfit.source}</div>
+                  <div style={{ color: "#4b5563", fontWeight: "500" }}>Source: {outfit.source}</div>
                 </div>
 
                 {outfit.items.length === 0 ? (
@@ -903,15 +1094,15 @@ export default function HomePage() {
                   </div>
                 ) : (
                   <>
-                    {["Top", "Bottom", "Shoes", "Hat"].map((category) => {
+                    {["Hat", "Top", "Bottom", "Shoes"].map((category) => {
                       const categoryItems = outfit.items.filter(item => item.category === category);
                       if (categoryItems.length === 0) return null;
 
                       return (
                         <div key={category} style={{ marginBottom: "24px" }}>
-                          <h3 style={{ 
-                            fontSize: "16px", 
-                            fontWeight: "600", 
+                          <h3 style={{
+                            fontSize: "16px",
+                            fontWeight: "600",
                             marginBottom: "12px",
                             color: "#374151"
                           }}>
@@ -924,13 +1115,50 @@ export default function HomePage() {
                               gap: "18px",
                             }}
                           >
-                            {categoryItems.map((item) => (
-                              <ProductCard key={`${outfit.basedOn}-${item.category}-${item.id}`} item={item} />
-                            ))}
+                            {categoryItems.map((item) => {
+                              const itemKey = `${outfit.basedOn}-${item.category}-${item.id}`;
+                              const isSelected = selectedOutfitItems[itemKey];
+                              return (
+                                <OutfitItemCard
+                                  key={itemKey}
+                                  item={item}
+                                  isSelected={isSelected}
+                                  onChange={(checked) => {
+                                    setSelectedOutfitItems((prev) => ({
+                                      ...prev,
+                                      [itemKey]: checked ? item : undefined,
+                                    }));
+                                  }}
+                                />
+                              );
+                            })}
                           </div>
                         </div>
                       );
                     })}
+
+                    {outfit.items.length > 0 && (
+                      <div style={{ marginTop: "24px", display: "flex", gap: "12px", justifyContent: "center" }}>
+                        <button
+                          onClick={() => setShowMannequinPreview(true)}
+                          style={{
+                            padding: "12px 24px",
+                            borderRadius: "8px",
+                            border: "none",
+                            backgroundColor: "#4f46e5",
+                            color: "#fff",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                            fontSize: "14px",
+                            transition: "background-color 0.2s",
+                          }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = "#4338ca"}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = "#4f46e5"}
+                        >
+                          Preview Outfit
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -969,113 +1197,66 @@ export default function HomePage() {
           </section>
         ) : null}
         </div>
-      </main>
 
-      {/* How It Works Section */}
-      {imageUrl ? (
-      <section
-        style={{
-          backgroundColor: "#fff",
-          padding: "64px 20px",
-        }}
-      >
-        <div style={{ maxWidth: "1000px", margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{
-            fontSize: "36px",
-            fontWeight: "700",
-            margin: "0 0 48px 0",
-            color: "#111827"
-          }}>
-            How it works
-          </h2>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-            gap: "32px",
-            textAlign: "center"
-          }}>
-            <div>
-              <div style={{
-                fontSize: "48px",
-                fontWeight: "700",
-                color: "#667eea",
-                marginBottom: "16px"
-              }}>
-                1
-              </div>
-              <h3 style={{
-                fontSize: "20px",
-                fontWeight: "600",
-                margin: "0 0 8px 0",
-                color: "#111827"
-              }}>
-                Upload an image
-              </h3>
-              <p style={{
-                fontSize: "15px",
-                color: "#6b7280",
-                margin: 0,
-                lineHeight: "1.6"
-              }}>
-                Start with any clothing item or inspiration photo
-              </p>
-            </div>
-            <div>
-              <div style={{
-                fontSize: "48px",
-                fontWeight: "700",
-                color: "#667eea",
-                marginBottom: "16px"
-              }}>
-                2
-              </div>
-              <h3 style={{
-                fontSize: "20px",
-                fontWeight: "600",
-                margin: "0 0 8px 0",
-                color: "#111827"
-              }}>
-                Pick your colors
-              </h3>
-              <p style={{
-                fontSize: "15px",
-                color: "#6b7280",
-                margin: 0,
-                lineHeight: "1.6"
-              }}>
-                Our AI detects colors automatically or click to select
-              </p>
-            </div>
-            <div>
-              <div style={{
-                fontSize: "48px",
-                fontWeight: "700",
-                color: "#667eea",
-                marginBottom: "16px"
-              }}>
-                3
-              </div>
-              <h3 style={{
-                fontSize: "20px",
-                fontWeight: "600",
-                margin: "0 0 8px 0",
-                color: "#111827"
-              }}>
-                Get outfit recommendations
-              </h3>
-              <p style={{
-                fontSize: "15px",
-                color: "#6b7280",
-                margin: 0,
-                lineHeight: "1.6"
-              }}>
-                Receive curated product matches from top brands
-              </p>
+        {showMannequinPreview && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 2000,
+              padding: "20px",
+            }}
+            onClick={() => setShowMannequinPreview(false)}
+          >
+            <div
+              style={{
+                position: "relative",
+                maxWidth: "500px",
+                width: "100%",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowMannequinPreview(false)}
+                style={{
+                  position: "absolute",
+                  top: "-40px",
+                  right: 0,
+                  backgroundColor: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  width: "36px",
+                  height: "36px",
+                  fontSize: "24px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "bold",
+                  color: "#6b7280",
+                }}
+              >
+                ✕
+              </button>
+              <MannequinPreview
+                selectedItems={[
+                  ...(anchorImage && !Object.values(selectedOutfitItems).some(item => item?.category === anchorCategory)
+                    ? [{ image: anchorImage, title: "Your Item", category: anchorCategory }]
+                    : []),
+                  ...Object.values(selectedOutfitItems).filter(Boolean)
+                ]}
+              />
             </div>
           </div>
-        </div>
-      </section>
-      ) : null}
+        )}
+      </main>
 
       <footer
         style={{
@@ -1086,11 +1267,25 @@ export default function HomePage() {
         }}
       >
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#4b5563" }}>
+            <Link href="/about" style={{ color: "inherit", textDecoration: "none" }}>About</Link>
+            {" · "}
+            <Link href="/contact" style={{ color: "inherit", textDecoration: "none" }}>Contact</Link>
+            {" · "}
+            <Link href="/privacy-policy" style={{ color: "inherit", textDecoration: "none" }}>Privacy Policy</Link>
+            {" · "}
+            <Link href="/terms" style={{ color: "inherit", textDecoration: "none" }}>Terms</Link>
+            {" · "}
+            <Link href="/affiliate-disclosure" style={{ color: "inherit", textDecoration: "none" }}>Affiliate Disclosure</Link>
+          </p>
           <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280" }}>
-            We may earn commissions from affiliate links.
+            As an affiliate, BuildMyOutfit may earn from qualifying purchases.
           </p>
           <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
             All product prices and availability are subject to change.
+          </p>
+          <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "#6b7280" }}>
+            © 2026 BuildMyOutfit.com
           </p>
         </div>
       </footer>

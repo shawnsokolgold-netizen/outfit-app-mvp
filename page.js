@@ -43,9 +43,22 @@ export default function Home() {
     return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
   }
 
-  function getColorName(h, s, l) {
-    if (l < 12) return "Black";
+  function getColorName(h, s, l, r, g, b) {
+    // Classify as Black only if EXTREMELY dark AND very neutral.
+    // Uses both HSL saturation and RGB channel spread to confirm neutrality,
+    // preventing dark saturated colors (navy, purple, dark green) from being misclassified as Black.
+    if (l < 10 && s < 10) {
+      // For very dark pixels, also verify neutrality in RGB space.
+      // Neutral colors have minimal spread between R, G, B channels.
+      // This catches edge cases where HSL saturation alone is insufficient.
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      if (spread < 30) return "Black";
+    }
+
+    // Filter out near-white and light neutral backgrounds.
+    // These are typically product photo backgrounds, not the item itself.
     if (l > 88 && s < 15) return "White";
+
     if (s < 15) return "Gray";
     if (h >= 0 && h < 15) return "Red";
     if (h >= 15 && h < 40) return "Orange";
@@ -59,6 +72,123 @@ export default function Home() {
     return "Pink";
   }
 
+  // Estimate background color by sampling the four corners of the image.
+  // Corner-based estimation is reliable for ecommerce product photos, which typically have
+  // uniform or near-uniform backgrounds (studio lighting, plain backdrops, or white seamless).
+  function estimateBackgroundColor(imageData, width, height) {
+    const { data } = imageData;
+    const cornerSize = Math.floor(Math.min(width, height) * 0.08); // 8% of image dimension
+    const corners = [
+      { startX: 0, startY: 0 }, // Top-left
+      { startX: width - cornerSize, startY: 0 }, // Top-right
+      { startX: 0, startY: height - cornerSize }, // Bottom-left
+      { startX: width - cornerSize, startY: height - cornerSize }, // Bottom-right
+    ];
+
+    let totalR = 0, totalG = 0, totalB = 0, count = 0;
+    for (const corner of corners) {
+      for (let y = corner.startY; y < corner.startY + cornerSize && y < height; y++) {
+        for (let x = corner.startX; x < corner.startX + cornerSize && x < width; x++) {
+          const idx = (y * width + x) * 4;
+          if (data[idx + 3] === 0) continue; // Skip transparent
+          totalR += data[idx];
+          totalG += data[idx + 1];
+          totalB += data[idx + 2];
+          count++;
+        }
+      }
+    }
+    return count > 0 ? {
+      r: Math.round(totalR / count),
+      g: Math.round(totalG / count),
+      b: Math.round(totalB / count),
+    } : { r: 255, g: 255, b: 255 }; // Default to white if no valid corners
+  }
+
+  // Calculate RGB distance between two colors.
+  // Used to determine if a pixel is similar enough to the background color.
+  function rgbDistance(r1, g1, b1, r2, g2, b2) {
+    return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+  }
+
+  // Flood-fill background removal: mark all pixels connected to image edges that are
+  // similar to the background color. This approach is more reliable than HSL thresholds because:
+  // - It respects spatial connectivity (only marks contiguous background regions)
+  // - It naturally handles soft shadows and color gradients near edges
+  // - It preserves dark/saturated foreground colors that would be incorrectly filtered by L/S thresholds
+  function buildBackgroundMask(imageData, width, height, bgColor, tolerance) {
+    const { data } = imageData;
+    const mask = new Uint8Array(width * height); // 1 = foreground, 0 = background
+    mask.fill(1); // Assume foreground initially
+
+    // BFS from edges to mark background regions
+    const queue = [];
+    const visited = new Set();
+
+    // Add all edge pixels to the queue
+    for (let x = 0; x < width; x++) {
+      queue.push(x, 0); // Top edge
+      queue.push(x, height - 1); // Bottom edge
+    }
+    for (let y = 0; y < height; y++) {
+      queue.push(0, y); // Left edge
+      queue.push(width - 1, y); // Right edge
+    }
+
+    for (let i = 0; i < queue.length; i += 2) {
+      const x = queue[i], y = queue[i + 1];
+      const key = y * width + x;
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      const idx = key * 4;
+      if (data[idx + 3] === 0) continue; // Skip transparent
+
+      const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+      const dist = rgbDistance(r, g, b, bgColor.r, bgColor.g, bgColor.b);
+
+      if (dist <= tolerance) {
+        mask[key] = 0; // Mark as background
+        // Add neighbors to queue
+        if (x > 0) queue.push(x - 1, y);
+        if (x < width - 1) queue.push(x + 1, y);
+        if (y > 0) queue.push(x, y - 1);
+        if (y < height - 1) queue.push(x, y + 1);
+      }
+    }
+
+    return mask;
+  }
+
+  // Erode the foreground mask by 1 pixel to remove anti-aliased halos and edge contamination.
+  // In product photos, the edges of objects often have soft halos from compression or anti-aliasing.
+  // A pixel stays foreground only if it and most of its immediate neighbors are also foreground.
+  // This single-pixel erosion is aggressive enough to remove edge fringing but preserves the object shape.
+  function erodeForegroundMask(mask, width, height) {
+    const eroded = new Uint8Array(mask);
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i] === 0) continue; // Background stays background
+
+      const y = Math.floor(i / width);
+      const x = i % width;
+
+      // Count foreground neighbors (8-connected)
+      let foregroundNeighbors = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny < 0 || ny >= height || nx < 0 || nx >= width) continue;
+          if (mask[ny * width + nx] === 1) foregroundNeighbors++;
+        }
+      }
+
+      // Erode: keep pixel as foreground only if it plus at least 6 of 8 neighbors are foreground.
+      // This means at most 2 neighbors can be background (diagonal corners allowed to be background).
+      if (foregroundNeighbors < 7) eroded[i] = 0;
+    }
+    return eroded;
+  }
+
   function handleDetectColors() {
     const img = imgRef.current;
     if (!img) return;
@@ -68,31 +198,68 @@ export default function Home() {
     const width = img.naturalWidth, height = img.naturalHeight;
     canvas.width = width; canvas.height = height;
     ctx.drawImage(img, 0, 0);
-    const startX = Math.floor(width * 0.2), startY = Math.floor(height * 0.2);
-    const sampleWidth = Math.floor(width * 0.6), sampleHeight = Math.floor(height * 0.6);
-    const { data } = ctx.getImageData(startX, startY, sampleWidth, sampleHeight);
+
+    // Get full image data for background detection
+    const fullImageData = ctx.getImageData(0, 0, width, height);
+
+    // Step 1: Estimate background color from corners
+    const bgColor = estimateBackgroundColor(fullImageData, width, height);
+
+    // Step 2: Build foreground mask using flood-fill with RGB distance tolerance
+    // Tolerance accounts for soft shadows and slight background color variations in product photos
+    const bgMask = buildBackgroundMask(fullImageData, width, height, bgColor, 50);
+
+    // Step 2b: Erode foreground mask to remove anti-aliased edge halos and background fringing
+    // This single-pixel erosion removes contamination from edge anti-aliasing without destroying object shape.
+    const fgMask = erodeForegroundMask(bgMask, width, height);
+
+    // Step 3: Color detection only on foreground pixels
     const familyMap = {};
+    let totalProductPixels = 0;
+    const { data } = fullImageData;
+
     for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] === 0) continue;
+      if (data[i + 3] === 0) continue; // Skip transparent
+      const pixelIdx = i / 4;
+      if (fgMask[pixelIdx] === 0) continue; // Skip background and eroded edge pixels
+
       const r = data[i], g = data[i + 1], b = data[i + 2];
       const hsl = rgbToHsl(r, g, b);
-      const name = getColorName(hsl.h, hsl.s, hsl.l);
+      const name = getColorName(hsl.h, hsl.s, hsl.l, r, g, b);
+
       if (!familyMap[name]) familyMap[name] = { count: 0, rTotal: 0, gTotal: 0, bTotal: 0 };
       familyMap[name].count++;
       familyMap[name].rTotal += r;
       familyMap[name].gTotal += g;
       familyMap[name].bTotal += b;
+
+      if (name !== "White" && name !== "Black") totalProductPixels += 1;
     }
-    const sorted = Object.entries(familyMap)
+
+    let sorted = Object.entries(familyMap)
       .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 5)
       .map(([name, v]) => {
         const r = Math.round(v.rTotal / v.count);
         const g = Math.round(v.gTotal / v.count);
         const b = Math.round(v.bTotal / v.count);
-        return { name, rgb: `RGB(${r}, ${g}, ${b})`, hex: rgbToHex(r, g, b) };
+        return { name, count: v.count, rgb: `RGB(${r}, ${g}, ${b})`, hex: rgbToHex(r, g, b) };
       });
-    setDetectedColors(sorted);
+
+    // Suppress weak neutrals with stricter thresholds for ecommerce product photos.
+    // White and Black are often anti-aliasing artifacts, background contamination, or shadows.
+    // They must represent meaningful portions of the product to be included in the palette.
+    // These aggressive thresholds prevent spurious neutral colors from drowning out the real hue information.
+    const whiteThreshold = totalProductPixels * 0.30; // White must be ≥30% of product
+    const blackThreshold = totalProductPixels * 0.25; // Black must be ≥25% of product
+    sorted = sorted.filter(item => {
+      if (item.name === "White" && item.count < whiteThreshold) return false;
+      if (item.name === "Black" && item.count < blackThreshold) return false;
+      return true;
+    });
+
+    const filtered = sorted.slice(0, 5).map(({ name, rgb, hex }) => ({ name, rgb, hex }));
+
+    setDetectedColors(filtered);
     setOutfits([]);
   }
 
@@ -120,7 +287,7 @@ export default function Home() {
     if (count === 0) return;
     const r = Math.round(rT / count), g = Math.round(gT / count), b = Math.round(bT / count);
     const hsl = rgbToHsl(r, g, b);
-    const name = getColorName(hsl.h, hsl.s, hsl.l);
+    const name = getColorName(hsl.h, hsl.s, hsl.l, r, g, b);
     setSelectedColor({ name, rgb: `RGB(${r}, ${g}, ${b})`, hex: rgbToHex(r, g, b), x: clickX, y: clickY });
     setOutfits([]);
   }
@@ -223,8 +390,8 @@ export default function Home() {
           <div style={{ display: "inline-block", fontSize: "12px", fontWeight: "700", padding: "6px 10px", borderRadius: "999px", backgroundColor: "#f3f4f6", marginBottom: "10px" }}>
             {item.category}
           </div>
-          <h3 style={{ margin: "0 0 8px 0", fontSize: "18px" }}>{item.title}</h3>
-          <p style={{ margin: "0 0 14px 0", fontWeight: "700", fontSize: "18px" }}>{item.price}</p>
+          <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", color: "#1f2937" }}>{item.title}</h3>
+          <p style={{ margin: "0 0 14px 0", fontWeight: "700", fontSize: "18px", color: "#111827" }}>{item.price}</p>
           <a href="#shop" style={{ display: "inline-block", textDecoration: "none", backgroundColor: "#111827", color: "#fff", padding: "10px 14px", borderRadius: "10px", fontWeight: "600" }}>
             Shop Item
           </a>

@@ -1,0 +1,4 @@
+- Must look like ecommerce site
+- Show product cards with price
+- Clean spacing and layout
+- No empty states

@@ -1,6 +1,9 @@
+import "./globals.css";
+
 export const metadata = {
-  title: "Outfit App MVP",
-  description: "Starter app",
+  title: "BuildMyOutfit — AI Outfit Builder",
+  description:
+    "Upload a photo, detect colors, and get curated outfit recommendations from top brands. Free AI-powered outfit builder.",
 };
 
 export default function RootLayout({ children }) {
