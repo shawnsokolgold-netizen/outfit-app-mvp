@@ -10,6 +10,7 @@ export default function HomePage() {
   const [detectedColors, setDetectedColors] = useState([]);
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedCombo, setSelectedCombo] = useState([]);
+  const [manuallySelectedColors, setManuallySelectedColors] = useState([]);
   const [outfits, setOutfits] = useState([]);
   const [loadingOutfit, setLoadingOutfit] = useState(false);
   const [strictMatch, setStrictMatch] = useState(true);
@@ -17,11 +18,30 @@ export default function HomePage() {
   const [showMannequinPreview, setShowMannequinPreview] = useState(false);
   const [anchorCategory, setAnchorCategory] = useState(null);
   const [anchorImage, setAnchorImage] = useState(null);
+  const [ebayResults, setEbayResults] = useState({});
+  const [ebayLoading, setEbayLoading] = useState(false);
+  const [ebayError, setEbayError] = useState(null);
+  const [isUpdatingResults, setIsUpdatingResults] = useState(false);
+  const resultsCacheRef = useRef({});
   const imgRef = useRef(null);
   const buildTimeoutRef = useRef(null);
   const resultsRef = useRef(null);
   const appRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Predefined color palette for "Start from Scratch" flow
+  const COLOR_PALETTE = [
+    { name: "Black", hex: "#000000" },
+    { name: "White", hex: "#FFFFFF" },
+    { name: "Gray", hex: "#808080" },
+    { name: "Blue", hex: "#0066FF" },
+    { name: "Green", hex: "#00AA00" },
+    { name: "Teal", hex: "#008080" },
+    { name: "Purple", hex: "#800080" },
+    { name: "Red", hex: "#FF0000" },
+    { name: "Yellow", hex: "#FFFF00" },
+    { name: "Orange", hex: "#FF9900" },
+  ];
 
   function handleImageUpload(event) {
     const file = event.target.files?.[0];
@@ -156,40 +176,264 @@ export default function HomePage() {
     return map[name] || "black";
   }
 
-  function formatProduct(product) {
-    if (!product) return null;
+  function buildEbayQueries(colors, excludeCategory = null) {
+    const colorNames = colors.map(c => c.name).join(" ");
 
+    const queries = {
+      shoes: `mens ${colorNames} basketball shoes`,
+      top: `mens ${colorNames} hoodie`,
+      bottom: `mens ${colorNames} joggers`,
+      hat: `${colorNames} snapback hat`,
+    };
+
+    // Exclude eBay queries for the anchor category (if one was uploaded)
+    if (excludeCategory) {
+      const excludeKey = Object.keys(EBAY_CATEGORY_MAP).find(
+        k => EBAY_CATEGORY_MAP[k] === excludeCategory
+      );
+      if (excludeKey) {
+        delete queries[excludeKey];
+      }
+    }
+
+    return queries;
+  }
+
+  function scoreEbayItem(item, colors, expectedCategory) {
+    let score = 0;
+    const titleLower = item.title.toLowerCase();
+    const colorNames = colors.map(c => c.name.toLowerCase());
+
+    // Bad keywords that indicate junk listings (hard filter)
+    const badKeywords = [
+      "women",
+      "womens",
+      "kids",
+      "youth",
+      "toddler",
+      "costume",
+      "lot",
+      "bulk",
+      "replacement",
+      "sticker",
+      "poster",
+    ];
+
+    for (const badKeyword of badKeywords) {
+      if (titleLower.includes(badKeyword)) {
+        return -1000; // Strongly exclude
+      }
+    }
+
+    // Color matching (both colors present = good)
+    const colorsInTitle = colorNames.filter(color =>
+      titleLower.includes(color)
+    ).length;
+    score += colorsInTitle * 50;
+
+    // Category-specific keyword matching
+    const categoryKeywords = {
+      shoes: [
+        "shoe",
+        "shoes",
+        "sneaker",
+        "sneakers",
+        "basketball",
+        "training",
+        "sport",
+      ],
+      top: [
+        "hoodie",
+        "hoodies",
+        "sweatshirt",
+        "sweatshirts",
+        "pullover",
+        "jacket",
+      ],
+      bottom: [
+        "pants",
+        "pant",
+        "jogger",
+        "joggers",
+        "sweatpants",
+        "trousers",
+      ],
+      hat: ["hat", "hats", "snapback", "snapbacks", "cap", "caps", "beanie"],
+    };
+
+    const keywords = categoryKeywords[expectedCategory] || [];
+    const keywordsInTitle = keywords.filter(kw => titleLower.includes(kw))
+      .length;
+    score += keywordsInTitle * 30;
+
+    // Condition: New is better
+    if (item.condition && item.condition.toLowerCase() === "new") {
+      score += 100;
+    }
+
+    // Brand reputation (common trusted brands)
+    const trustedBrands = [
+      "nike",
+      "adidas",
+      "puma",
+      "reebok",
+      "under armour",
+      "jordan",
+      "carhartt",
+      "dickies",
+      "champion",
+      "tommy hilfiger",
+      "polo",
+      "gucci",
+      "supreme",
+      "the north face",
+    ];
+
+    for (const brand of trustedBrands) {
+      if (titleLower.includes(brand)) {
+        score += 75;
+        break; // Only count one brand
+      }
+    }
+
+    return score;
+  }
+
+  async function fetchEbayProducts(queries) {
+    setEbayLoading(true);
+    setEbayError(null);
+    setIsUpdatingResults(true);
+
+    // Check cache first
+    const cacheKey = getCacheKey(selectedCombo.map(c => c.name));
+    if (resultsCacheRef.current[`ebay-${cacheKey}`]) {
+      setEbayResults(resultsCacheRef.current[`ebay-${cacheKey}`]);
+      setEbayLoading(false);
+      setIsUpdatingResults(false);
+      return;
+    }
+
+    try {
+      const results = {};
+
+      for (const [category, query] of Object.entries(queries)) {
+        try {
+          const res = await fetch("/api/ebay-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, limit: 15 }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            let items = data.items || [];
+
+            // Score and filter items
+            const selectedComboColors = selectedCombo || [];
+            items = items
+              .map(item => ({
+                ...item,
+                score: scoreEbayItem(item, selectedComboColors, category),
+              }))
+              .filter(item => item.score >= 0) // Remove junk listings
+              .sort((a, b) => b.score - a.score) // Sort by score descending
+              .slice(0, 8); // Keep top 8
+
+            results[category] = items;
+          }
+        } catch (err) {
+          console.error(`Failed to fetch ${category} from eBay:`, err);
+        }
+      }
+
+      setEbayResults(results);
+
+      // Cache the results
+      const cacheKey = getCacheKey(selectedCombo.map(c => c.name));
+      resultsCacheRef.current[`ebay-${cacheKey}`] = results;
+    } catch (err) {
+      console.error("eBay fetch error:", err);
+      setEbayError(err.message);
+    } finally {
+      setEbayLoading(false);
+      setIsUpdatingResults(false);
+    }
+  }
+
+  function generateMatchExplanation(product, requestedColors) {
+    if (!product?.colors || !Array.isArray(product.colors)) return null;
+
+    const matchedColors = product.colors.filter(c =>
+      requestedColors.includes(c.toLowerCase())
+    );
+
+    if (matchedColors.length === 0) return null;
+
+    // Capitalize first letter of each color
+    const formatted = matchedColors.map(c =>
+      c.charAt(0).toUpperCase() + c.slice(1)
+    );
+
+    return formatted.length === 1
+      ? `Matches: ${formatted[0]}`
+      : `Matches: ${formatted.join(' + ')}`;
+  }
+
+  const EBAY_CATEGORY_MAP = {
+    shoes: "Shoes",
+    top: "Top",
+    bottom: "Bottom",
+    hat: "Hat",
+  };
+
+  function normalizeSupabaseItem(product, category, normalizedColors) {
+    if (!product) return null;
     return {
-      id: product.id,
+      id: String(product.id),
+      source: "BuildMyOutfit",
+      category,
       title: product.title,
       image: product.image_url,
       price: product.price_text || "",
       affiliateUrl: product.affiliate_url,
       brand: product.brand || "",
+      condition: null,
+      matchExplanation: generateMatchExplanation(product, normalizedColors),
     };
   }
 
-  function generateMatchExplanation(product, requestedColors) {
-    if (!product?.colors || !Array.isArray(product.colors)) return null;
-    
-    const matchedColors = product.colors.filter(c => 
-      requestedColors.includes(c.toLowerCase())
-    );
-    
-    if (matchedColors.length === 0) return null;
-    
-    // Capitalize first letter of each color
-    const formatted = matchedColors.map(c => 
-      c.charAt(0).toUpperCase() + c.slice(1)
-    );
-    
-    return formatted.length === 1 
-      ? `Matches: ${formatted[0]}`
-      : `Matches: ${formatted.join(' + ')}`;
+  function normalizeEbayItem(item, ebayKey) {
+    return {
+      id: `ebay-${item.itemWebUrl}`,
+      source: "eBay",
+      category: EBAY_CATEGORY_MAP[ebayKey],
+      title: item.title,
+      image: item.image,
+      price: item.price,
+      affiliateUrl: item.itemWebUrl,
+      brand: null,
+      condition: item.condition || null,
+      matchExplanation: null,
+    };
+  }
+
+  // Helper: Generate cache key from colors
+  function getCacheKey(colors) {
+    return colors.sort().join("-").toLowerCase();
   }
 
   async function requestOutfit(normalizedColors, meta, shouldScroll = false) {
     setLoadingOutfit(true);
+    setIsUpdatingResults(true);
+
+    // Check cache first
+    const cacheKey = getCacheKey(normalizedColors);
+    if (resultsCacheRef.current[cacheKey]) {
+      setOutfits(resultsCacheRef.current[cacheKey]);
+      setLoadingOutfit(false);
+      setIsUpdatingResults(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/match-products", {
@@ -206,40 +450,26 @@ export default function HomePage() {
         return;
       }
 
-      setOutfits([
+      const outfitData = [
         {
           ...meta,
           items: [
-            result.top ? { 
-              category: "Top", 
-              ...formatProduct(result.top),
-              matchExplanation: generateMatchExplanation(result.top, normalizedColors)
-            } : null,
-            result.bottom ? { 
-              category: "Bottom", 
-              ...formatProduct(result.bottom),
-              matchExplanation: generateMatchExplanation(result.bottom, normalizedColors)
-            } : null,
-            result.shoe ? { 
-              category: "Shoes", 
-              ...formatProduct(result.shoe),
-              matchExplanation: generateMatchExplanation(result.shoe, normalizedColors)
-            } : null,
-            result.hat ? { 
-              category: "Hat", 
-              ...formatProduct(result.hat),
-              matchExplanation: generateMatchExplanation(result.hat, normalizedColors)
-            } : null,
+            result.top ? normalizeSupabaseItem(result.top, "Top", normalizedColors) : null,
+            result.bottom ? normalizeSupabaseItem(result.bottom, "Bottom", normalizedColors) : null,
+            result.shoe ? normalizeSupabaseItem(result.shoe, "Shoes", normalizedColors) : null,
+            result.hat ? normalizeSupabaseItem(result.hat, "Hat", normalizedColors) : null,
             ...(result.hats || [])
               .filter((hat) => hat && hat.id !== result.hat?.id)
-              .map((hat) => ({ 
-                category: "Hat", 
-                ...formatProduct(hat),
-                matchExplanation: generateMatchExplanation(hat, normalizedColors)
-              })),
+              .map((hat) => normalizeSupabaseItem(hat, "Hat", normalizedColors)),
           ].filter(Boolean),
         },
-      ]);
+      ];
+
+      setOutfits(outfitData);
+
+      // Cache the results
+      const cacheKey = getCacheKey(normalizedColors);
+      resultsCacheRef.current[cacheKey] = outfitData;
 
       // Scroll to results only if explicitly requested
       if (shouldScroll) {
@@ -249,7 +479,51 @@ export default function HomePage() {
       }
     } finally {
       setLoadingOutfit(false);
+      setIsUpdatingResults(false);
     }
+  }
+
+  function toggleManualColor(color) {
+    setManuallySelectedColors(prev => {
+      const isSelected = prev.some(c => c.hex === color.hex);
+      if (isSelected) {
+        // Remove color
+        return prev.filter(c => c.hex !== color.hex);
+      } else {
+        // Add color (max 3)
+        if (prev.length < 3) {
+          return [...prev, color];
+        }
+        return prev;
+      }
+    });
+  }
+
+  function buildOutfitFromManualColors() {
+    if (manuallySelectedColors.length === 0) return;
+
+    setSelectedCombo(manuallySelectedColors);
+    setSelectedColor(null);
+    setSelectedOutfitItems({});
+    setShowMannequinPreview(false);
+    setAnchorCategory(null);
+    setAnchorImage(null);
+
+    const normalizedColors = [...new Set(manuallySelectedColors.map((c) => normalizeColorName(c.name)))];
+    const main = manuallySelectedColors[0];
+    const names = [...new Set(manuallySelectedColors.map((c) => c.name))];
+
+    requestOutfit(normalizedColors, {
+      type: "combo",
+      basedOn: names.join(" + "),
+      basedOnHex: main.hex,
+      source: "Manual Selection",
+      comboColors: manuallySelectedColors,
+    }, true);
+
+    // Also fetch eBay products based on selected colors (exclude anchor category if set)
+    const queries = buildEbayQueries(manuallySelectedColors, null);
+    fetchEbayProducts(queries);
   }
 
   function buildOutfitFromColor(color) {
@@ -277,6 +551,10 @@ export default function HomePage() {
       source: "Color Combo",
       comboColors: selectedCombo,
     }, shouldScroll);
+
+    // Also fetch eBay products based on selected colors (exclude anchor category if set)
+    const queries = buildEbayQueries(selectedCombo, anchorCategory);
+    fetchEbayProducts(queries);
   }
 
   // Auto-build outfit when selectedCombo or strictMatch changes
@@ -301,6 +579,50 @@ export default function HomePage() {
       }
     };
   }, [selectedCombo, strictMatch]);
+
+  // Auto-build outfit when manually selected colors change (Start from Scratch)
+  useEffect(() => {
+    // Clear any pending timeout
+    if (buildTimeoutRef.current) {
+      clearTimeout(buildTimeoutRef.current);
+    }
+
+    // Only auto-build if there are manually selected colors
+    if (manuallySelectedColors.length > 0) {
+      // Debounce to avoid rapid API calls when quickly selecting/deselecting colors
+      buildTimeoutRef.current = setTimeout(() => {
+        setSelectedCombo(manuallySelectedColors);
+        setSelectedColor(null);
+        setSelectedOutfitItems({});
+        setShowMannequinPreview(false);
+        setAnchorCategory(null);
+        setAnchorImage(null);
+
+        const normalizedColors = [...new Set(manuallySelectedColors.map((c) => normalizeColorName(c.name)))];
+        const main = manuallySelectedColors[0];
+        const names = [...new Set(manuallySelectedColors.map((c) => c.name))];
+
+        requestOutfit(normalizedColors, {
+          type: "combo",
+          basedOn: names.join(" + "),
+          basedOnHex: main.hex,
+          source: "Manual Selection",
+          comboColors: manuallySelectedColors,
+        }, false);
+
+        // Also fetch eBay products based on selected colors
+        const queries = buildEbayQueries(manuallySelectedColors, null);
+        fetchEbayProducts(queries);
+      }, 500);
+    }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (buildTimeoutRef.current) {
+        clearTimeout(buildTimeoutRef.current);
+      }
+    };
+  }, [manuallySelectedColors]);
 
   function handleDetectColors() {
     const img = imgRef.current;
@@ -466,112 +788,6 @@ export default function HomePage() {
     }
   }
 
-  function ProductCard({ item }) {
-    return (
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: "16px",
-          overflow: "hidden",
-          backgroundColor: "#fff",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-        }}
-      >
-        <img
-          src={item.image}
-          alt={item.title}
-          style={{
-            width: "100%",
-            height: "220px",
-            objectFit: "contain",
-            display: "block",
-          }}
-        />
-
-        <div style={{ padding: "16px" }}>
-          <div
-            style={{
-              display: "inline-block",
-              fontSize: "12px",
-              fontWeight: "700",
-              padding: "6px 10px",
-              borderRadius: "999px",
-              backgroundColor: "#f3f4f6",
-              marginBottom: "10px",
-              color: "#374151",
-            }}
-          >
-            {item.category}
-          </div>
-
-          <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", color: "#1f2937" }}>{item.title}</h3>
-
-          {item.matchExplanation ? (
-            <p style={{ 
-              margin: "0 0 8px 0", 
-              color: "#059669", 
-              fontSize: "13px",
-              fontWeight: "600" 
-            }}>
-              {item.matchExplanation}
-            </p>
-          ) : null}
-
-          {item.brand ? (
-            <p style={{ margin: "0 0 8px 0", color: "#6b7280", fontSize: "14px" }}>
-              {item.brand}
-            </p>
-          ) : null}
-
-          {item.price ? (
-            <p style={{ margin: "0 0 14px 0", fontWeight: "700", fontSize: "18px", color: "#111827" }}>
-              {item.price}
-            </p>
-          ) : null}
-
-          {item.affiliateUrl ? (
-            <a
-              href={item.affiliateUrl}
-              target="_blank"
-              rel="nofollow sponsored noopener noreferrer"
-              style={{
-                display: "block",
-                textDecoration: "none",
-                backgroundColor: "#FF9900",
-                color: "#000",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                fontWeight: "700",
-                textAlign: "center",
-                fontSize: "14px",
-                transition: "background-color 0.2s",
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = "#FFB84D"}
-              onMouseLeave={(e) => e.target.style.backgroundColor = "#FF9900"}
-            >
-              View Product
-            </a>
-          ) : (
-            <span
-              style={{
-                display: "block",
-                backgroundColor: "#d1d5db",
-                color: "#6b7280",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                fontWeight: "600",
-                textAlign: "center",
-                fontSize: "14px",
-              }}
-            >
-              Link coming soon
-            </span>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   const howItWorksSection = (
     <section
       style={{
@@ -680,6 +896,45 @@ export default function HomePage() {
     </section>
   );
 
+  // Unified selection and combined items display
+  const DISPLAY_CATEGORIES = ["Hat", "Top", "Bottom", "Shoes"];
+  const GRID_COLUMNS = 4;
+
+  const combinedItemsByCategory = DISPLAY_CATEGORIES.reduce((acc, cat) => {
+    const supabaseItems = outfits.flatMap(o => o.items).filter(i => i.category === cat);
+    const ebayKey = Object.keys(EBAY_CATEGORY_MAP).find(k => EBAY_CATEGORY_MAP[k] === cat);
+    const rawEbay = ebayKey ? (ebayResults[ebayKey] || []) : [];
+    const allItems = [...supabaseItems, ...rawEbay.map(i => {
+      const { score, ...itemWithoutScore } = i;
+      return normalizeEbayItem(itemWithoutScore, ebayKey);
+    })];
+    // Trim to show only complete rows
+    const completeRowCount = Math.floor(allItems.length / GRID_COLUMNS);
+    acc[cat] = allItems.slice(0, completeRowCount * GRID_COLUMNS);
+    return acc;
+  }, {});
+
+  const hasAnyItems = DISPLAY_CATEGORIES.some(cat => combinedItemsByCategory[cat].length > 0);
+
+  function handleSelectOutfitItem(item, checked) {
+    const key = item.category.toLowerCase();
+    setSelectedOutfitItems(prev => ({
+      ...prev,
+      [key]: checked ? { category: item.category, image: item.image, title: item.title } : undefined,
+    }));
+  }
+
+  // Skeleton placeholder for first load
+  const SkeletonCard = () => (
+    <div style={{
+      backgroundColor: "#f3f4f6",
+      borderRadius: "12px",
+      overflow: "hidden",
+      height: "280px",
+      animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+    }} />
+  );
+
   return (
     <>
       <header
@@ -785,6 +1040,169 @@ export default function HomePage() {
           </button>
         </div>
       </section>
+
+      {/* Manual Color Selection - "Start from Scratch" Flow */}
+      {!imageUrl && (
+        <section
+          style={{
+            backgroundColor: "#fff",
+            borderRadius: "20px",
+            padding: "32px 24px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+            marginBottom: "24px",
+            maxWidth: "1200px",
+            margin: "0 auto 24px",
+          }}
+        >
+          <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+            <h3 style={{
+              fontSize: "20px",
+              fontWeight: "700",
+              color: "#111827",
+              margin: "0 0 8px 0"
+            }}>
+              Or Start from Scratch
+            </h3>
+            <p style={{
+              fontSize: "14px",
+              color: "#6b7280",
+              margin: "0 0 20px 0"
+            }}>
+              Tap 1–3 colors to instantly build an outfit
+            </p>
+
+            {/* Color Palette Grid */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(50px, 1fr))",
+              gap: "12px",
+              marginBottom: "20px",
+            }}>
+              {COLOR_PALETTE.map((color) => (
+                <button
+                  key={color.hex}
+                  onClick={() => toggleManualColor(color)}
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1",
+                    borderRadius: "12px",
+                    border: manuallySelectedColors.some(c => c.hex === color.hex)
+                      ? "3px solid #4f46e5"
+                      : "2px solid #e5e7eb",
+                    backgroundColor: color.hex,
+                    cursor: "pointer",
+                    position: "relative",
+                    transition: "all 0.2s",
+                    boxShadow: manuallySelectedColors.some(c => c.hex === color.hex)
+                      ? "0 0 0 4px rgba(79, 70, 229, 0.2)"
+                      : "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.transform = "scale(1.05)";
+                    e.target.style.boxShadow = manuallySelectedColors.some(c => c.hex === color.hex)
+                      ? "0 0 0 4px rgba(79, 70, 229, 0.2), 0 8px 16px rgba(0, 0, 0, 0.15)"
+                      : "0 8px 16px rgba(0, 0, 0, 0.15)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = "scale(1)";
+                    e.target.style.boxShadow = manuallySelectedColors.some(c => c.hex === color.hex)
+                      ? "0 0 0 4px rgba(79, 70, 229, 0.2)"
+                      : "0 2px 4px rgba(0, 0, 0, 0.1)";
+                  }}
+                >
+                  {manuallySelectedColors.some(c => c.hex === color.hex) && (
+                    <span style={{
+                      fontSize: "20px",
+                      fontWeight: "700",
+                      color: color.hex === "#FFFFFF" ? "#000" : "#fff",
+                    }}>
+                      ✓
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Color Names Display */}
+            {manuallySelectedColors.length > 0 && (
+              <div style={{
+                backgroundColor: "#f9fafb",
+                padding: "12px 16px",
+                borderRadius: "10px",
+                marginBottom: "20px",
+                fontSize: "14px",
+                color: "#374151",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}>
+                <span>Selected: <strong>{manuallySelectedColors.map(c => c.name).join(" + ")}</strong></span>
+                <button
+                  onClick={() => setManuallySelectedColors([])}
+                  style={{
+                    backgroundColor: "transparent",
+                    border: "none",
+                    color: "#6b7280",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    transition: "color 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.color = "#374151";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.color = "#6b7280";
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            {/* Build Button */}
+            <button
+              onClick={() => {
+                buildOutfitFromManualColors();
+                // Auto-scroll to results after a brief delay for data to load
+                setTimeout(() => {
+                  resultsRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+              disabled={manuallySelectedColors.length === 0}
+              style={{
+                width: "100%",
+                padding: "12px 24px",
+                borderRadius: "10px",
+                border: "none",
+                backgroundColor: manuallySelectedColors.length > 0 ? "#4f46e5" : "#d1d5db",
+                color: "#fff",
+                fontWeight: "700",
+                fontSize: "15px",
+                cursor: manuallySelectedColors.length > 0 ? "pointer" : "not-allowed",
+                opacity: manuallySelectedColors.length > 0 ? 1 : 0.6,
+                transition: "background-color 0.2s, opacity 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (manuallySelectedColors.length > 0) {
+                  e.target.style.backgroundColor = "#4338ca";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (manuallySelectedColors.length > 0) {
+                  e.target.style.backgroundColor = "#4f46e5";
+                }
+              }}
+            >
+              Build Outfit from Colors
+            </button>
+          </div>
+        </section>
+      )}
 
       {!imageUrl && howItWorksSection}
 
@@ -1031,7 +1449,7 @@ export default function HomePage() {
         }}
       >
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {outfits.length > 0 ? (
+        {hasAnyItems && (
           <section
             ref={resultsRef}
             style={{
@@ -1043,159 +1461,118 @@ export default function HomePage() {
           >
             <h2 style={{ marginTop: 0, color: "#1f2937" }}>Outfit Suggestions</h2>
 
-            {outfits.map((outfit, index) => (
-              <div key={index} style={{ marginBottom: "28px" }}>
-                <div style={{ marginBottom: "18px" }}>
-                  <div style={{ fontWeight: "700", fontSize: "18px", color: "#1f2937" }}>
-                    Based on: {outfit.basedOn}
-                  </div>
-                  <div style={{ color: "#4b5563", fontWeight: "500" }}>Source: {outfit.source}</div>
-                </div>
-
-                {outfit.items.length === 0 ? (
-                  <div style={{ 
-                    padding: "32px 24px", 
-                    textAlign: "center", 
-                    backgroundColor: "#f9fafb",
-                    borderRadius: "12px"
-                  }}>
-                    <h3 style={{ 
-                      margin: "0 0 8px 0", 
-                      fontSize: "18px", 
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>
-                      No exact matches found
-                    </h3>
-                    <p style={{ 
-                      margin: "0 0 16px 0", 
-                      color: "#6b7280",
-                      fontSize: "14px"
-                    }}>
-                      Try removing a color or turning off Match all selected colors
-                    </p>
-                    {strictMatch ? (
-                      <button
-                        onClick={() => setStrictMatch(false)}
-                        style={{
-                          padding: "10px 16px",
-                          borderRadius: "8px",
-                          border: "none",
-                          backgroundColor: "#4f46e5",
-                          color: "#fff",
-                          fontWeight: "600",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                        }}
-                      >
-                        Show closest matches
-                      </button>
-                    ) : null}
-                  </div>
-                ) : (
-                  <>
-                    {["Hat", "Top", "Bottom", "Shoes"].map((category) => {
-                      const categoryItems = outfit.items.filter(item => item.category === category);
-                      if (categoryItems.length === 0) return null;
-
-                      return (
-                        <div key={category} style={{ marginBottom: "24px" }}>
-                          <h3 style={{
-                            fontSize: "16px",
-                            fontWeight: "600",
-                            marginBottom: "12px",
-                            color: "#374151"
-                          }}>
-                            {category === "Top" ? "Tops" : category === "Bottom" ? "Bottoms" : category === "Shoes" ? "Shoes" : "Hats"}
-                          </h3>
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                              gap: "18px",
-                            }}
-                          >
-                            {categoryItems.map((item) => {
-                              const itemKey = `${outfit.basedOn}-${item.category}-${item.id}`;
-                              const isSelected = selectedOutfitItems[itemKey];
-                              return (
-                                <OutfitItemCard
-                                  key={itemKey}
-                                  item={item}
-                                  isSelected={isSelected}
-                                  onChange={(checked) => {
-                                    setSelectedOutfitItems((prev) => ({
-                                      ...prev,
-                                      [itemKey]: checked ? item : undefined,
-                                    }));
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {outfit.items.length > 0 && (
-                      <div style={{ marginTop: "24px", display: "flex", gap: "12px", justifyContent: "center" }}>
-                        <button
-                          onClick={() => setShowMannequinPreview(true)}
-                          style={{
-                            padding: "12px 24px",
-                            borderRadius: "8px",
-                            border: "none",
-                            backgroundColor: "#4f46e5",
-                            color: "#fff",
-                            fontWeight: "600",
-                            cursor: "pointer",
-                            fontSize: "14px",
-                            transition: "background-color 0.2s",
-                          }}
-                          onMouseEnter={(e) => e.target.style.backgroundColor = "#4338ca"}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = "#4f46e5"}
-                        >
-                          Preview Outfit
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {outfit.items.length > 0 ? (
-                  <div style={{
-                    marginTop: "24px",
-                    padding: "20px",
-                    backgroundColor: "#f0fdf4",
-                    borderRadius: "12px",
-                    border: "1px solid #bbf7d0"
-                  }}>
-                    <h3 style={{
-                      margin: "0 0 8px 0",
-                      fontSize: "16px",
-                      fontWeight: "600",
-                      color: "#166534"
-                    }}>
-                      Why this outfit works
-                    </h3>
-                    <p style={{
-                      margin: 0,
-                      fontSize: "14px",
-                      color: "#15803d",
-                      lineHeight: "1.6"
-                    }}>
-                      The selected colors are balanced across the outfit. The top reflects your primary colors, while neutral pieces keep the look clean and wearable.
-                    </p>
-                  </div>
-                ) : null}
+            {/* Outfit metadata header (from Supabase results) */}
+            {outfits.map((outfit, i) => (
+              <div key={i} style={{ marginBottom: "18px" }}>
+                <div style={{ fontWeight: "700", fontSize: "18px", color: "#1f2937" }}>Based on: {outfit.basedOn}</div>
+                <div style={{ color: "#4b5563", fontWeight: "500" }}>Source: {outfit.source}</div>
               </div>
             ))}
 
+            {/* Loading states */}
+            {loadingOutfit && <div style={{ padding: "8px 0", color: "#4f46e5", fontWeight: "600", fontSize: "14px", marginBottom: "10px" }}>Building your outfit...</div>}
+            {ebayLoading && <div style={{ padding: "8px 0", color: "#6b7280", fontSize: "14px" }}>Loading eBay products...</div>}
+            {isUpdatingResults && (outfits.length > 0 || ebayResults.shoes || ebayResults.top || ebayResults.bottom || ebayResults.hat) && (
+              <div style={{ padding: "8px 0", color: "#9ca3af", fontSize: "13px", fontStyle: "italic" }}>Updating results...</div>
+            )}
+
+            {/* No matches fallback (only when Supabase returned empty) */}
+            {outfits.length > 0 && outfits[0].items.length === 0 && (
+              <div style={{ padding: "32px 24px", textAlign: "center", backgroundColor: "#f9fafb", borderRadius: "12px" }}>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", fontWeight: "600", color: "#374151" }}>No exact matches found</h3>
+                <p style={{ margin: "0 0 16px 0", color: "#6b7280", fontSize: "14px" }}>Try removing a color or turning off Match all selected colors</p>
+                {strictMatch && <button onClick={() => setStrictMatch(false)} style={{ padding: "10px 16px", borderRadius: "8px", border: "none", backgroundColor: "#4f46e5", color: "#fff", fontWeight: "600", cursor: "pointer", fontSize: "14px" }}>Show closest matches</button>}
+              </div>
+            )}
+
+            {/* Skeleton placeholders (first load) */}
+            {(loadingOutfit || ebayLoading) && outfits.length === 0 && !ebayResults.shoes && !ebayResults.top && !ebayResults.bottom && !ebayResults.hat && (
+              <>
+                {["Hats", "Tops", "Bottoms", "Shoes"].map(category => (
+                  <div key={category} style={{ marginBottom: "24px" }}>
+                    <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", color: "#374151" }}>{category}</h3>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "18px" }}>
+                      {[1, 2, 3, 4].map(i => (
+                        <SkeletonCard key={i} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Unified category groups */}
+            {DISPLAY_CATEGORIES.map(category => {
+              const items = combinedItemsByCategory[category];
+              if (!items.length) return null;
+              const categoryLabel = { Hat: "Hats", Top: "Tops", Bottom: "Bottoms", Shoes: "Shoes" }[category];
+              return (
+                <div key={category} style={{ marginBottom: "24px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", color: "#374151" }}>{categoryLabel}</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "18px" }}>
+                    {items.map(item => {
+                      const key = item.category.toLowerCase();
+                      const isSelected = !!selectedOutfitItems[key] && selectedOutfitItems[key].title === item.title;
+                      return (
+                        <OutfitItemCard
+                          key={item.id}
+                          item={item}
+                          isSelected={isSelected}
+                          onChange={(checked) => handleSelectOutfitItem(item, checked)}
+                          onPreview={() => {
+                            handleSelectOutfitItem(item, true);
+                            setShowMannequinPreview(true);
+                            setTimeout(() => {
+                              document.getElementById("preview-section")?.scrollIntoView({ behavior: "smooth" });
+                            }, 0);
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Preview button */}
+            {hasAnyItems && (
+              <div id="preview-section" style={{ marginTop: "24px", display: "flex", gap: "12px", justifyContent: "center" }}>
+                <button
+                  onClick={() => setShowMannequinPreview(true)}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: "8px",
+                    border: "none",
+                    backgroundColor: "#4f46e5",
+                    color: "#fff",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    transition: "background-color 0.2s",
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = "#4338ca"}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = "#4f46e5"}
+                >
+                  Preview Outfit
+                </button>
+              </div>
+            )}
+
+            {/* Why this outfit works (only when Supabase items present) */}
+            {outfits.some(o => o.items.length > 0) && (
+              <div style={{ marginTop: "24px", padding: "20px", backgroundColor: "#f0fdf4", borderRadius: "12px", border: "1px solid #bbf7d0" }}>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "600", color: "#166534" }}>Why this outfit works</h3>
+                <p style={{ margin: 0, fontSize: "14px", color: "#15803d", lineHeight: "1.6" }}>
+                  The selected colors are balanced across the outfit. The top reflects your primary colors, while neutral pieces keep the look clean and wearable.
+                </p>
+              </div>
+            )}
+
             <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "16px" }}>
-              As an Amazon Associate, I earn from qualifying purchases.
+              As an Amazon Associate, I earn from qualifying purchases. eBay prices and availability subject to change.
             </p>
           </section>
-        ) : null}
+        )}
         </div>
 
         {showMannequinPreview && (
