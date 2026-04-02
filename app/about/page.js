@@ -3,7 +3,7 @@ import SiteFooter from "@/components/SiteFooter";
 import Link from "next/link";
 
 export const metadata = {
-  title: "About — BuildMyOutfit",
+  title: "About - BuildMyOutfit",
   description:
     "BuildMyOutfit is an AI-powered outfit builder that helps everyday shoppers discover coordinated looks from real retailers.",
 };
@@ -27,7 +27,7 @@ export default function AboutPage() {
           </h1>
           <p className="text-gray-400 text-lg leading-relaxed max-w-2xl">
             An AI-powered outfit builder that turns any photo into a complete,
-            shoppable look — from real products at real retailers.
+            shoppable look from real products at real retailers.
           </p>
         </div>
       </section>
@@ -39,15 +39,10 @@ export default function AboutPage() {
         <section className="mb-16">
           <h2 className="text-2xl font-black text-gray-900 mb-5">What is BuildMyOutfit?</h2>
           <p className="text-gray-600 leading-relaxed text-lg mb-4">
-            BuildMyOutfit is a fashion discovery platform that uses AI to help
-            everyday shoppers put together outfits that actually work. Upload any
-            photo — a piece of clothing, a color palette, an inspiration image —
-            and we instantly surface coordinated product recommendations from
-            top retailers.
+            BuildMyOutfit helps you create outfits based on colors.
           </p>
           <p className="text-gray-600 leading-relaxed text-lg">
-            We built this for people who want to look put-together without spending
-            hours browsing. No styling experience needed.
+            Upload a photo or choose colors, and the app suggests matching items using real products from online retailers. The goal is to make it easy to discover outfits that look good together without overthinking it.
           </p>
         </section>
 
@@ -55,7 +50,7 @@ export default function AboutPage() {
         <section className="mb-16">
           <h2 className="text-2xl font-black text-gray-900 mb-5">The problem we solve</h2>
           <p className="text-gray-600 leading-relaxed text-lg mb-4">
-            Most shoppers know what they like when they see it — but turning that
+            Most shoppers know what they like when they see it, but turning that
             into a complete outfit means juggling colors, categories, and a dozen
             different websites. It takes time most people don't have.
           </p>
@@ -76,7 +71,7 @@ export default function AboutPage() {
               {
                 step: "01",
                 title: "Upload any photo",
-                desc: "A shoe, a shirt, a photo you love — anything with colors you want to build an outfit around.",
+                desc: "A shoe, a shirt, a photo you love, or anything with colors you want to build an outfit around.",
               },
               {
                 step: "02",
@@ -86,7 +81,7 @@ export default function AboutPage() {
               {
                 step: "03",
                 title: "Shop matching products",
-                desc: "We surface coordinated tops, bottoms, shoes, and accessories from multiple retailers — ready to browse and buy.",
+                desc: "We surface coordinated tops, bottoms, shoes, and accessories from multiple retailers, ready to browse and buy.",
               },
             ].map((item) => (
               <div key={item.step}>
@@ -109,7 +104,7 @@ export default function AboutPage() {
           </h2>
           <p className="text-gray-600 leading-relaxed text-lg mb-4">
             BuildMyOutfit is free to use. We earn a small commission when you
-            click through to a retailer and make a purchase — at no extra cost
+            click through to a retailer and make a purchase, at no extra cost
             to you. This is a standard affiliate arrangement, and it's how we
             keep the platform running and the product catalog growing.
           </p>
@@ -134,7 +129,7 @@ export default function AboutPage() {
           </h2>
           <p className="text-gray-600 leading-relaxed text-lg mb-4">
             Product recommendations on BuildMyOutfit are driven by color
-            coordination logic — not paid placements or sponsorships. We
+            coordination logic, not paid placements or sponsorships. We
             recommend items because they work well together, period.
           </p>
           <p className="text-gray-600 leading-relaxed text-lg">

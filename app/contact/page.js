@@ -2,7 +2,7 @@ import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
 
 export const metadata = {
-  title: "Contact — BuildMyOutfit",
+  title: "Contact - BuildMyOutfit",
   description:
     "Get in touch with the BuildMyOutfit team for support, feedback, or partnership inquiries.",
 };
@@ -25,8 +25,7 @@ export default function ContactPage() {
             Get in touch
           </h1>
           <p className="text-gray-400 text-lg leading-relaxed max-w-2xl">
-            We're a small team and we read every message. Whether you have a
-            question, a suggestion, or want to work together — reach out.
+            If you have any questions, feedback, or suggestions, feel free to reach out. We are always working to improve BuildMyOutfit and make it more useful.
           </p>
         </div>
       </section>
@@ -68,7 +67,7 @@ export default function ContactPage() {
               <h3 className="text-sm font-bold text-gray-900 mb-1">Support</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
                 Questions about how the app works, broken links, or product
-                issues — we'll get back to you within 24–48 hours.
+                issues. We'll get back to you within 24–48 hours.
               </p>
             </div>
 
