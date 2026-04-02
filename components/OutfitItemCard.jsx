@@ -1,4 +1,13 @@
 export function OutfitItemCard({ item, isSelected, onChange, onPreview }) {
+  let buttonText;
+  if (item.source === "eBay") {
+    buttonText = "View on eBay";
+  } else if (item.source === "Amazon") {
+    buttonText = "View on Amazon";
+  } else {
+    buttonText = "View Product";
+  }
+
   return (
     <div className={`border rounded-2xl overflow-hidden bg-white shadow-lg hover:shadow-xl transition-shadow ${
       isSelected ? "border-indigo-500 ring-2 ring-indigo-300" : "border-gray-200"
@@ -79,7 +88,7 @@ export function OutfitItemCard({ item, isSelected, onChange, onPreview }) {
             rel="nofollow sponsored noopener noreferrer"
             className="block text-center bg-amber-400 text-black px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-amber-500 transition-colors"
           >
-            {item.source === "eBay" ? "View on eBay" : "View Product"}
+            {buttonText}
           </a>
         ) : (
           <span className="block text-center bg-gray-300 text-gray-600 px-3 py-1.5 rounded-lg font-semibold text-xs">

@@ -388,9 +388,19 @@ export default function HomePage() {
 
   function normalizeSupabaseItem(product, category, normalizedColors) {
     if (!product) return null;
+
+    let sourceLabel;
+    if (product.source?.toLowerCase() === "amazon") {
+      sourceLabel = "Amazon";
+    } else if (product.source?.toLowerCase() === "ebay") {
+      sourceLabel = "eBay";
+    } else {
+      sourceLabel = "BuildMyOutfit";
+    }
+
     return {
       id: String(product.id),
-      source: "BuildMyOutfit",
+      source: sourceLabel,
       category,
       title: product.title,
       image: product.image_url,
