@@ -402,15 +402,52 @@ export default function HomePage() {
     };
   }
 
+  function buildEpnLink(url, customId = "") {
+    if (!url) return "#";
+
+    try {
+      const urlObj = new URL(url);
+
+      // EPN parameters
+      const epnParams = {
+        mkcid: "1",
+        mkrid: "711-53200-19255-0",
+        campid: "5339147283",
+        toolid: "10001",
+        mkevt: "1",
+      };
+
+      // Add or update EPN parameters
+      Object.entries(epnParams).forEach(([key, value]) => {
+        urlObj.searchParams.set(key, value);
+      });
+
+      // Add customid if provided
+      if (customId) {
+        urlObj.searchParams.set("customid", customId);
+      }
+
+      return urlObj.toString();
+    } catch (err) {
+      console.warn("Invalid eBay URL:", url, err);
+      return url || "#";
+    }
+  }
+
   function normalizeEbayItem(item, ebayKey) {
+    const itemId = item.itemId || item.legacyItemId || "item";
+    const customId = `ebay_${ebayKey}_${itemId}`;
+    const rawUrl = item.itemWebUrl || item.webUrl || item.itemAffiliateWebUrl || "#";
+    const trackedUrl = buildEpnLink(rawUrl, customId);
+
     return {
-      id: `ebay-${item.itemWebUrl}`,
+      id: `ebay-${itemId}`,
       source: "eBay",
       category: EBAY_CATEGORY_MAP[ebayKey],
       title: item.title,
       image: item.image,
       price: item.price,
-      affiliateUrl: item.itemWebUrl,
+      affiliateUrl: trackedUrl,
       brand: null,
       condition: item.condition || null,
       matchExplanation: null,
